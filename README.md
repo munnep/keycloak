@@ -6,7 +6,7 @@ The Terraform code will do the following steps
 
 - Generate TLS certificates with Let's Encrypt to be used by keycloak
 - Create a VPC network with subnet, security group, internet gateway
-- Create a EC2 instance on which has docker installed and a running keycloak container with a compose file found at /opt/keycloak
+- Create a EC2 instance on which has docker installed and a running keycloak container with a compose file found at `/opt/keycloak/compose.yaml`
 
 # Diagram
 
