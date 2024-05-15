@@ -1,0 +1,126 @@
+#cloud-config
+write_files:
+  - path: "/var/tmp/server_certificate.pem"
+    permissions: "0755"
+    owner: "root:root"
+    content: !!binary |
+      "${cert_file}"
+  - path: "/var/tmp/private_certificate.key"
+    permissions: "0755"
+    owner: "root:root"
+    content: !!binary |
+      "${key_file}"
+
+  - path: "/var/tmp/compose.yaml"
+    permissions: "0755"
+    owner: "root:root"
+    content: |
+      version: '3'
+      services:
+        keycloak:
+          image: quay.io/keycloak/keycloak:24.0.4
+          ports:
+            - "443:443"
+            - "8080:8080"
+          volumes:
+            - "/var/tmp/server_certificate.pem:/var/tmp/server_certificate.pem"
+            - "/var/tmp/private_certificate.key:/var/tmp/private_certificate.key"
+          environment:
+            KEYCLOAK_ADMIN: admin
+            KEYCLOAK_ADMIN_PASSWORD: ${keycloak_admin_password}
+          command: >
+            start-dev 
+            --https-certificate-file=/var/tmp/server_certificate.pem 
+            --https-certificate-key-file=/var/tmp/private_certificate.key 
+            --https-port=443
+  - path: /var/tmp/install_software.sh 
+    permissions: '0750'
+    content: |
+      #!/usr/bin/env bash
+      # installation script for software
+      
+      # wait until archive is available. Wait until there is internet before continue
+      until ping -c1 archive.ubuntu.com &>/dev/null; do
+        echo "waiting for networking to initialise"
+        sleep 3 
+      done 
+      
+      # install monitoring tools
+      apt-get update
+      apt-get install -y ctop net-tools sysstat jq      
+
+      
+      # Set swappiness
+      if test -f /sys/kernel/mm/transparent_hugepage/enabled; then
+        echo never > /sys/kernel/mm/transparent_hugepage/enabled
+      fi
+      
+      if test -f /sys/kernel/mm/transparent_hugepage/defrag; then
+        echo never > /sys/kernel/mm/transparent_hugepage/defrag
+      fi
+      
+      # heavy swap vm.swappiness=80
+      # no swap vm.swappiness=1
+
+      echo vm.swappiness=1 >> /etc/sysctl.conf
+      echo vm.min_free_kbytes=67584 >> /etc/sysctl.conf
+      echo vm.drop_caches=1 >> /etc/sysctl.conf
+      sysctl -p
+      
+      # Select the disks to use 
+      SWAP=/dev/$(lsblk|grep nvme | grep -v nvme0n1 |sort -k 4 | awk '{print $1}'| awk '(NR==1)')
+      
+      # swap
+      # if SWAP exists
+      # we format if no format
+      if [ -b $SWAP ]; then
+      	blkid $SWAP
+      	if [ $? -ne 0 ]; then
+      		mkswap $SWAP
+      	fi
+      fi
+      
+      # if SWAP not in fstab
+      # we add it
+      grep "swap" /etc/fstab
+      if [ $? -ne 0 ]; then
+        SWAP_UUID=`blkid $SWAP| awk '{print $2}'`
+      	echo "$SWAP_UUID swap swap defaults 0 0" | tee -a /etc/fstab
+      	swapon -a
+      fi
+    
+      # install Docker software
+      ## remove the current pre installed docker components from default AWS
+      for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do sudo apt-get remove $pkg; done
+      
+      ## update the tools 
+      sudo apt-get update -y
+      sudo apt-get install ca-certificates curl gnupg -y
+      
+      ## add docker keyrings
+      sudo install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      sudo chmod a+r /etc/apt/keyrings/docker.gpg
+      
+      ## Add location for downloading docker packages
+      echo \
+        "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+        "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+        sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+      
+      ## update the installation information
+      sudo apt-get update -y
+      
+      ## list the versions
+      ## apt-cache madison docker-ce | awk '{ print $3 }'
+      VERSION_STRING=5:23.0.6-1~ubuntu.22.04~jammy
+      ## install the docker components
+      apt-get install docker-ce=$VERSION_STRING docker-ce-cli=$VERSION_STRING containerd.io docker-buildx-plugin docker-compose-plugin -y 
+
+      # run keycloak
+      mkdir -p /opt/keycloak
+      cp /var/tmp/compose.yaml /opt/keycloak/
+      pushd /opt/keycloak
+      docker compose up --detach
+runcmd:
+  - sudo bash /var/tmp/install_software.sh 
