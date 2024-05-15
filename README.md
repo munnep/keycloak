@@ -66,17 +66,18 @@ terraform plan
 ```
 terraform apply
 ```
-- Terraform output should create 29 resources and show you the public dns string you can use to connect to the keycloak instance
+- Terraform output should create 17 resources and show you the public dns string you can use to connect to the keycloak instance
 ```
-Apply complete! Resources: 29 added, 0 changed, 0 destroyed.
+Apply complete! Resources: 17 added, 0 changed, 0 destroyed.
 
 Outputs:
 
-ssh_keycloak_server   = "ssh ubuntu@keycloak66.aws.munnep.com.com"
-keycloak_appplication = "https://keycloak66.aws.munnep.com.com"
-keycloak_ip           = "ssh ubuntu@52.221.45.21" 
+keycloak_dashboard = "https://keycloak.aws.munnep.com"
+keycloak_ip = "13.50.44.168"
+ssh_keycloak_server = "ssh ubuntu@keycloak.aws.munnep.com"
 ```
-- You can now login to the application with the username admin and password specified in your variables.
+- You can now login to the application with the username `admin` and password specified in your variables.
+![](media/20240515113944.png)
 
 
 
